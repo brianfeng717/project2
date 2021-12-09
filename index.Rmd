@@ -46,76 +46,178 @@ class_diag <- function(score, truth, positive, cutoff=.5){
 
 # Mining, Classification, Prediction
 
-## Name and EID here
+## Brian Feng btf457
 
 ### Introduction 
-
-Paragraph or two introducing your datasets and variables, why they are interesting to you, etc. See instructions for more information
+In project 1, I explored a Fortune 500 dataset and looked at how numerical variables (revenue, profit, etc) interacted with categorical variables (gender of ceo, experience of ceo, etc) and found some interesting correlations. Therefore, I decided to continue exploring with the Fortune dataset.
 
 ```{R}
 library(tidyverse)
-# read your datasets in here, e.g., with read_csv()
+fortune <- read_csv("~/project2/Fortune_1000.csv")
+top250 <- fortune[1:250, c(1:6,11:13)]
+names(top250)[6]<-"num_employees"
+dim(top250)
+top250 %>% count(ceo_founder)
+top250 %>% count(ceo_woman)
+top250 %>% count(profitable)
 
-# if your dataset needs tidying, do so here
-
-# any other code here
 ```
+Because we are running through large amounts of data, and the R silhouette package can only handle a certain amount of data, I decided to cut down the dataset and only look at the Fortune top 250 companies. Further, I decided to shorten the number of columns and only look at the following variables: "company", "rank", "rank_change", "revenue", "profit", "num_employees", "ceo_founder", ceo_woman", "profitable". The last 3 variables ceo_founder, ceo_woman, and profitable are all binary variables with "yes" and "no" answers. While the rest are all numerical variables. The dataset has a total of 250 rows and 9 columns. Further details on the variables and how they were collected can be found at: https://www.kaggle.com/winston56/fortune-500-data-2021
 
 ### Cluster Analysis
 
 ```{R}
 library(cluster)
-# clustering code here
-```
+test <- top250%>% mutate_if(is.character,as.factor) %>% column_to_rownames("company") %>% daisy("gower") %>% as.matrix 
+gower1<-daisy(test,metric="gower") #here they are!
 
-Discussion of clustering here
-    
+sil_width<-vector()
+for(i in 2:10){  
+  pam_fit <- pam(gower1, diss = TRUE, k = i)  
+  sil_width[i] <- pam_fit$silinfo$avg.width  
+}
+ggplot()+geom_line(aes(x=1:10,y=sil_width))+scale_x_continuous(name="k",breaks=1:10)
+
+pam <- pam(gower1, k = 2, diss = T) #tell pam you are using dissimilarities
+plot(pam,which=2, color ="dark blue")
+plot(pam,which=1)
+
+library(GGally)
+ggpairs(top250, columns = 2:9,aes(color=as.factor(pam$clustering)))
+```
+The clustering is done based on gower dissimilarities. Running through a for-loop, we find out that the largest average silhouette width is with 2 clusters. When clustering with 2 clusters the average silhouette width is 0.64 which suggests that a reasonable structure has been identified. From the ggpairs plot, we can tell that the most correlated two variables are number of employees with revenue (positive) and revenue with rank(negative). However, overall, there isn't one variable that particularly well explains the two clusters.
     
 ### Dimensionality Reduction with PCA
 
 ```{R}
-# PCA code here
-```
+top250_nums<-top250 %>% select_if(is.numeric) %>% scale
+rownames(top250_nums)<-top250$company
+top250_pca<-princomp(top250_nums,cor=T)
+summary(top250_pca, loadings=T)
+eigval<-top250_pca$sdev^2 #square to convert SDs to eigenvalues
+varprop=round(eigval/sum(eigval), 2) #proportion of var explained by each PC
+ggplot() + geom_bar(aes(y=varprop, x=1:5), stat="identity") + xlab("PC") + geom_path(aes(y=varprop, x=1:5)) + 
+  geom_text(aes(x=1:5, y=varprop, label=round(varprop, 2)), vjust=-.5, size=4) + 
+  scale_y_continuous(breaks=seq(0, .6, .2), labels = scales::percent) + 
+  scale_x_continuous(breaks=1:5, limits=c(.5, 15))
 
-Discussions of PCA here. 
+df <-  data.frame(PC1=top250_pca$scores[, 1], PC2=top250_pca$scores[, 2],PC3=top250_pca$scores[, 3])
+ggplot(df, aes(PC1, PC2)) + geom_point()
+ggplot(df, aes(PC2, PC3)) + geom_point()
+```
+We will retain the first 3 PCs, which can reach a 88% variability. The first component explains how the variable rank moves in a different direction from every other variable except for rank change. Basically, as PC1 increases the rank also increases, but the revenue, profit, and number of employees decreases, which makes sense as in our dataset, the lower the rank the more successful the company is. The second component is simply the trend for rank_change and it doesn't interact with any other variable. As the PC2 score increases, the rank_change decreases. The third component shows that profit moves in the opposite direction from rank, revenue, and number of employees. The higher the PC3 score, the higher the rank, revenue, and number of employees, but lower the profit. 
 
 ###  Linear Classifier
 
 ```{R}
-# linear classifier code here
+logistic_fit <- glm(profitable == "yes" ~ rank + revenue + num_employees, data = top250, 
+    family = "binomial")
+prob_reg <- predict(logistic_fit, type = "response")
+class_diag(prob_reg, top250$profitable == "yes", positive = TRUE)
 ```
+The AUC is 0.6976 so it is in the "Poor" range of 0.6~0.7. It is really close to the "Fair" range of 0.7~0.8.
 
 ```{R}
-# cross-validation of linear classifier here
+table(truth= factor(top250$profitable=="yes", levels=c("TRUE","FALSE")),
+      prediction= factor(prob_reg>.5, levels=c("TRUE","FALSE")))
+set.seed(3)
+
+k=10
+
+data<-sample_frac(top250) #randomly order rows
+folds <- rep(1:k, length.out=nrow(data)) #create folds
+
+diags<-NULL
+
+i=1
+for(i in 1:k){
+# create training and test sets
+train<-data[folds!=i,] 
+test<-data[folds==i,] 
+truth<-test$profitable
+# train model
+logistic_fit <- glm(profitable == "yes" ~ rank + revenue + num_employees, data=train, family="binomial")
+# test model
+probs <- predict(logistic_fit,test, type = "response")
+# get performance metrics for each fold
+diags<-rbind(diags,class_diag(probs,truth,positive = "yes")) }
+#average performance metrics across all folds
+summarize_all(diags,mean)
 ```
 
-Discussion here
+The AUC for our CV is 0.71109 so it is in the "Fair" range of 0.7~0.8. This AUC score went up from the 0.6976 from the previous AUC score so there are no signs of overfitting in our model. 
 
 ### Non-Parametric Classifier
 
 ```{R}
 library(caret)
-# non-parametric classifier code here
+knn_fit <- knn3(factor(profitable == "yes",levels=c("TRUE","FALSE")) ~ rank + revenue + num_employees, data=top250, k=5)
+y_hat_knn <- predict(knn_fit,top250)
+class_diag(y_hat_knn[,1],top250$profitable, positive="yes")
 ```
-
+The AUC is 0.916 so it is in the "Great!" range of 0.9~1.0.
 ```{R}
-# cross-validation of np classifier here
-```
+table(truth= factor(top250$profitable == "yes", levels=c("TRUE","FALSE")),
+      prediction= factor(y_hat_knn[,1]>.5, levels=c("TRUE","FALSE")))
+set.seed(3)
+k = 10
 
-Discussion
+data <- sample_frac(top250)  #randomly order rows
+folds <- rep(1:k, length.out = nrow(data))  #create folds
+
+diags <- NULL
+
+i = 1
+for (i in 1:k) {
+    # create training and test sets
+    train <- data[folds != i, ]
+    test <- data[folds == i, ]
+    truth <- test$profitable
+    
+    # train model
+    fit <- knn3(profitable == "yes" ~ rank + revenue + num_employees, data = train)
+    # test model
+    probs <- predict(fit, newdata = test)[, 2]
+    
+    # get performance metrics for each fold
+    diags <- rbind(diags, class_diag(probs, truth, positive = "yes"))
+}
+
+# average performance metrics across all folds
+summarize_all(diags, mean)
+```
+The AUC is 0.67904 so it is in the "Poor" range of 0.8~0.9. The AUC score dropped from 0.916 to 0.67904 so there are obvious signs of overfitting in our model.
 
 
 ### Regression/Numeric Prediction
 
 ```{R}
-# regression model code here
+numeric <- top250 %>% select_if(is.numeric)
+fit<-lm(rank_change~.,data=numeric) 
+yhat<-predict(fit)
+mean((numeric$rank_change-yhat)^2)
 ```
-
+The Mean Squared Error for the numerical variable rank_change is 624.5297.
 ```{R}
-# cross-validation of regression model here
+set.seed(3)
+k=5 #choose number of folds
+data<-numeric[sample(nrow(numeric)),] #randomly order rows
+folds<-cut(seq(1:nrow(numeric)),breaks=k,labels=F) #create folds
+diags<-NULL
+for(i in 1:k){
+  train<-data[folds!=i,]
+  test<-data[folds==i,]
+  ## Fit linear regression model to training set
+  fit<-lm(rank_change~.,data=train)
+  ## Get predictions/y-hats on test set (fold i)
+  yhat<-predict(fit,newdata=test)
+  ## Compute prediction error  (MSE) for fold i
+  diags<-mean((test$rank_change-yhat)^2) 
+}
+mean(diags) 
 ```
 
-Discussion
+The average of the Mean Squared Error across 5 samples for the numerical variable rank_change is 1033.458. The MSE is higher in the Cross Validation so there are signs of overfitting.
 
 ### Python 
 
@@ -124,10 +226,15 @@ library(reticulate)
 ```
 
 ```{python}
-# python code here
+top = r.top250
+print(type(top))
+print(type(top["rank"]))
+python = "this is project2"
 ```
-
-Discussion
+```{R}
+py$python
+```
+Through "r." we were able to use Python's type and print function to use the "top250" dataset from R and find out that the r data frame is converted to a dictionary in Python. Through the "py$" we were able to call the python object in R and print out the lines "this is project2".
 
 ### Concluding Remarks
 
