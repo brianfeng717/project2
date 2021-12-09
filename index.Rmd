@@ -62,7 +62,7 @@ top250 %>% count(ceo_woman)
 top250 %>% count(profitable)
 
 ```
-Because we are running through large amounts of data, and the R silhouette package can only handle a certain amount of data, I decided to cut down the dataset and only look at the Fortune top 250 companies. Further, I decided to shorten the number of columns and only look at the following variables: "company", "rank", "rank_change", "revenue", "profit", "num_employees", "ceo_founder", ceo_woman", "profitable". The last 3 variables ceo_founder, ceo_woman, and profitable are all binary variables with "yes" and "no" answers. While the rest are all numerical variables. The dataset has a total of 250 rows and 9 columns. Further details on the variables and how they were collected can be found at: https://www.kaggle.com/winston56/fortune-500-data-2021
+Because we are running through large amounts of data, and the R silhouette package can only handle a certain amount of data, I decided to cut down the dataset and only look at the Fortune top 250 companies. Further, I decided to shorten the number of columns and only look at the following variables: "company", "rank", "rank_change", "revenue", "profit", "num_employees", "ceo_founder", ceo_woman", "profitable". The last 3 variables ceo_founder, ceo_woman, and profitable are all binary variables with "yes" and "no" answers. The number of observations per group are ceo_founder(yes: 9/no: 241), ceo_woman(yes: 21/no: 229), and profitable(yes: 225/no: 25). While the rest are all numerical variables. The dataset has a total of 250 rows and 9 columns. Further details on the variables and how they were collected can be found at: https://www.kaggle.com/winston56/fortune-500-data-2021
 
 ### Cluster Analysis
 
@@ -105,7 +105,7 @@ df <-  data.frame(PC1=top250_pca$scores[, 1], PC2=top250_pca$scores[, 2],PC3=top
 ggplot(df, aes(PC1, PC2)) + geom_point()
 ggplot(df, aes(PC2, PC3)) + geom_point()
 ```
-We will retain the first 3 PCs, which can reach a 88% variability. The first component explains how the variable rank moves in a different direction from every other variable except for rank change. Basically, as PC1 increases the rank also increases, but the revenue, profit, and number of employees decreases, which makes sense as in our dataset, the lower the rank the more successful the company is. The second component is simply the trend for rank_change and it doesn't interact with any other variable. As the PC2 score increases, the rank_change decreases. The third component shows that profit moves in the opposite direction from rank, revenue, and number of employees. The higher the PC3 score, the higher the rank, revenue, and number of employees, but lower the profit. 
+We will retain the first 3 PCs, which can reach a 88% variability. The first component explains how the variable rank moves in a different direction from every other variable except for rank change. Basically, as PC1 increases the rank also increases, but the revenue, profit, and number of employees decreases, which makes sense because the lower the rank the more successful the company is (rank 1 is better than rank 10). The second component is simply the trend for rank_change and it doesn't interact with any other variable. As the PC2 score increases, the rank_change decreases. The third component shows that profit moves in the opposite direction from rank, revenue, and number of employees. The higher the PC3 score, the higher the rank, revenue, and number of employees, but lower the profit. 
 
 ###  Linear Classifier
 
@@ -115,6 +115,7 @@ logistic_fit <- glm(profitable == "yes" ~ rank + revenue + num_employees, data =
 prob_reg <- predict(logistic_fit, type = "response")
 class_diag(prob_reg, top250$profitable == "yes", positive = TRUE)
 ```
+We are predicting the binary variable of whether a company is profitable based on the numerical variables of revenue, number of employees, and the rank. 
 The AUC is 0.6976 so it is in the "Poor" range of 0.6~0.7. It is really close to the "Fair" range of 0.7~0.8.
 
 ```{R}
@@ -155,6 +156,7 @@ knn_fit <- knn3(factor(profitable == "yes",levels=c("TRUE","FALSE")) ~ rank + re
 y_hat_knn <- predict(knn_fit,top250)
 class_diag(y_hat_knn[,1],top250$profitable, positive="yes")
 ```
+We are performing knn on the same dataset as the previous section, that is, we are predicting the binary variable of whether a company is profitable based on the numerical variables of revenue, number of employees, and the rank.
 The AUC is 0.916 so it is in the "Great!" range of 0.9~1.0.
 ```{R}
 table(truth= factor(top250$profitable == "yes", levels=c("TRUE","FALSE")),
@@ -234,11 +236,10 @@ python = "this is project2"
 ```{R}
 py$python
 ```
-Through "r." we were able to use Python's type and print function to use the "top250" dataset from R and find out that the r data frame is converted to a dictionary in Python. Through the "py$" we were able to call the python object in R and print out the lines "this is project2".
+Through "r." we were able to use Python's type and print function on the R dataset "top250" and find out that the r data frame is converted to a dictionary in Python. Through the "py$" we were able to call the python object in R and print out the line "this is project2".
 
 ### Concluding Remarks
-
-Include concluding remarks here, if any
+I had a lot of fun this semester and am really glad I got to work on an interesting project like this one to finish the semester!
 
 
 
